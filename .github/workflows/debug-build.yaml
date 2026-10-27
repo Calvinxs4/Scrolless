@@ -1,0 +1,96 @@
+name: Debug build
+
+# Builds the debug APK and runs the unit tests.
+# - Runs on every push to main, or by hand (Actions > Debug build > Run workflow).
+# - Patch inbox: any *.patch file uploaded to the repository root is applied first (git am),
+#   committed, removed, and pushed back. Patches must not touch .github/workflows.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: debug-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Apply pending patches
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(./*.patch ./*.patch.txt)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No pending patches."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for f in "${files[@]}"; do
+            echo "Applying $f"
+            if ! git am --3way "$f"; then
+              git am --abort || true
+              echo "::error::Could not apply $f. The repository was left unchanged."
+              exit 1
+            fi
+            git rm -q -f --ignore-unmatch -- "$f"
+            rm -f -- "$f"
+            if ! git diff --cached --quiet; then
+              git commit -q -m "Remove applied patch $(basename "$f")"
+            fi
+          done
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Copy CI gradle.properties
+        run: mkdir -p ~/.gradle ; cp .github/gradle-ci.properties ~/.gradle/gradle.properties
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build the debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiktok-focus-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      # The APK is already uploaded above, so a failing test turns the run red without losing it.
+      - name: Unit tests
+        run: ./gradlew test --stacktrace
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            **/build/reports/tests/
+            **/build/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Format check (informational)
+        continue-on-error: true
+        run: ./gradlew spotlessCheck --stacktrace
+        
