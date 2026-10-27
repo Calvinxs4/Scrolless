@@ -36,6 +36,7 @@ import com.scrolless.app.core.repository.BlockingConfigRepository
 import com.scrolless.app.core.repository.SessionTracker
 import com.scrolless.app.core.repository.UserSettingsStore
 import com.scrolless.app.debug.DebugOverlayConfig
+import com.scrolless.app.debug.InspectorHook
 import com.scrolless.app.ui.overlay.BlockedContentOverlayManager
 import com.scrolless.app.ui.overlay.TimerOverlayManager
 import dagger.hilt.android.AndroidEntryPoint
@@ -239,6 +240,7 @@ class ScrollessBlockAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         Timber.i("Accessibility service connected")
+        InspectorHook.attach(this)
 
         // Start with restricted configuration to save battery
         refreshServiceConfig()
@@ -356,6 +358,7 @@ class ScrollessBlockAccessibilityService : AccessibilityService() {
      * @param event The accessibility event emitted by Android.
      */
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        InspectorHook.onEvent(this, event)
         if (!powerManager.isInteractive) {
             handleTrackedAppExit("screen is off while receiving accessibility event")
             return
@@ -429,6 +432,7 @@ class ScrollessBlockAccessibilityService : AccessibilityService() {
     /** Cleans up overlays, cancels handlers, and stops all background jobs when the service is destroyed. */
     override fun onDestroy() {
         super.onDestroy()
+        InspectorHook.detach()
         Timber.d(
             "Service state at destroy: hasContentSession=%b, viewingApp=%s",
             contentSession != null, viewingSession?.app,

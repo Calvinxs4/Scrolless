@@ -66,6 +66,17 @@ android {
         includeInApk = false
     }
 
+    signingConfigs {
+        // Public, non-secret debug key committed on purpose: with a stable key, a new debug APK
+        // installs over the previous one. CI would otherwise generate a different key on every run.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         getByName("debug") {
             applicationIdSuffix = ".debug"

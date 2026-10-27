@@ -39,6 +39,8 @@ proguard-project.txt
 # Signing keys (never commit these)
 *.jks
 *.keystore
+# Exception: the public, non-secret debug key (password "android") that keeps debug APKs updatable.
+!app/debug.keystore
 
 # Build / local files
 gradle/gradle-daemon-jvm.properties
